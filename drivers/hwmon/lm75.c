@@ -48,6 +48,7 @@ enum lm75_type {		/* keep sorted in alphabetical order */
 	max6625,
 	max6626,
 	mcp980x,
+	pct2075,
 	stds75,
 	tcn75,
 	tmp100,
@@ -343,6 +344,10 @@ lm75_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		data->resolution = 9;
 		data->sample_time = MSEC_PER_SEC / 8;
 		break;
+	case pct2075:
+		data->resolution = 11;
+		data->sample_time = MSEC_PER_SEC / 10;
+		break;
 	case mcp980x:
 		data->resolution_limits = 9;
 		/* fall through */
@@ -416,6 +421,7 @@ static const struct i2c_device_id lm75_ids[] = {
 	{ "max6625", max6625, },
 	{ "max6626", max6626, },
 	{ "mcp980x", mcp980x, },
+	{ "pct2075", pct2075, },
 	{ "stds75", stds75, },
 	{ "tcn75", tcn75, },
 	{ "tmp100", tmp100, },
@@ -474,6 +480,10 @@ static const struct of_device_id lm75_of_match[] = {
 	{
 		.compatible = "maxim,mcp980x",
 		.data = (void *)mcp980x
+	},
+	{
+		.compatible = "nxp,pct2075",
+		.data = (void *)pct2075
 	},
 	{
 		.compatible = "st,stds75",
