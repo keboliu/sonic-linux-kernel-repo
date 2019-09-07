@@ -25,7 +25,7 @@ static bool unknown_in_range(const struct nf_conntrack_tuple *tuple,
 	return true;
 }
 
-static void unknown_unique_tuple(const struct nf_nat_l3proto *l3proto,
+static int unknown_unique_tuple(const struct nf_nat_l3proto *l3proto,
 				 struct nf_conntrack_tuple *tuple,
 				 const struct nf_nat_range2 *range,
 				 enum nf_nat_manip_type maniptype,
@@ -34,7 +34,7 @@ static void unknown_unique_tuple(const struct nf_nat_l3proto *l3proto,
 	/* Sorry: we can't help you; if it's not unique, we can't frob
 	 * anything.
 	 */
-	return;
+	return 0;
 }
 
 static bool
