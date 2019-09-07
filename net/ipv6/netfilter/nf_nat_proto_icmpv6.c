@@ -29,7 +29,7 @@ icmpv6_in_range(const struct nf_conntrack_tuple *tuple,
 	       ntohs(tuple->src.u.icmp.id) <= ntohs(max->icmp.id);
 }
 
-static void
+static int
 icmpv6_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		    struct nf_conntrack_tuple *tuple,
 		    const struct nf_nat_range *range,
@@ -50,8 +50,9 @@ icmpv6_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		tuple->src.u.icmp.id = htons(ntohs(range->min_proto.icmp.id) +
 					     (id % range_size));
 		if (++i == range_size || !nf_nat_used_tuple(tuple, ct))
-			return;
+			return 1;
 	}
+	return 0;
 }
 
 static bool

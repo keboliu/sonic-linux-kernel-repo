@@ -19,15 +19,15 @@
 
 static u16 udplite_port_rover;
 
-static void
+static int
 udplite_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		     struct nf_conntrack_tuple *tuple,
 		     const struct nf_nat_range *range,
 		     enum nf_nat_manip_type maniptype,
 		     const struct nf_conn *ct)
 {
-	nf_nat_l4proto_unique_tuple(l3proto, tuple, range, maniptype, ct,
-				    &udplite_port_rover);
+	return nf_nat_l4proto_unique_tuple(l3proto, tuple, range, maniptype, ct,
+					   &udplite_port_rover);
 }
 
 static bool

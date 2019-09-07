@@ -38,7 +38,7 @@ MODULE_AUTHOR("Harald Welte <laforge@gnumonks.org>");
 MODULE_DESCRIPTION("Netfilter NAT protocol helper module for GRE");
 
 /* generate unique tuple ... */
-static void
+static int
 gre_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		 struct nf_conntrack_tuple *tuple,
 		 const struct nf_nat_range *range,
@@ -52,7 +52,7 @@ gre_unique_tuple(const struct nf_nat_l3proto *l3proto,
 	/* If there is no master conntrack we are not PPTP,
 	   do not change tuples */
 	if (!ct->master)
-		return;
+		return 0;
 
 	if (maniptype == NF_NAT_MANIP_SRC)
 		keyptr = &tuple->src.u.gre.key;
@@ -73,11 +73,11 @@ gre_unique_tuple(const struct nf_nat_l3proto *l3proto,
 	for (i = 0; ; ++key) {
 		*keyptr = htons(min + key % range_size);
 		if (++i == range_size || !nf_nat_used_tuple(tuple, ct))
-			return;
+			return 1;
 	}
 
 	pr_debug("%p: no NAT mapping\n", ct);
-	return;
+	return 0;
 }
 
 /* manipulate a GRE packet according to maniptype */

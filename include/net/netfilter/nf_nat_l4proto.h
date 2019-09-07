@@ -31,7 +31,7 @@ struct nf_nat_l4proto {
 	 * possible.  Per-protocol part of tuple is initialized to the
 	 * incoming packet.
 	 */
-	void (*unique_tuple)(const struct nf_nat_l3proto *l3proto,
+	int (*unique_tuple)(const struct nf_nat_l3proto *l3proto,
 			     struct nf_conntrack_tuple *tuple,
 			     const struct nf_nat_range *range,
 			     enum nf_nat_manip_type maniptype,
@@ -60,11 +60,11 @@ bool nf_nat_l4proto_in_range(const struct nf_conntrack_tuple *tuple,
 			     const union nf_conntrack_man_proto *min,
 			     const union nf_conntrack_man_proto *max);
 
-void nf_nat_l4proto_unique_tuple(const struct nf_nat_l3proto *l3proto,
-				 struct nf_conntrack_tuple *tuple,
-				 const struct nf_nat_range *range,
-				 enum nf_nat_manip_type maniptype,
-				 const struct nf_conn *ct, u16 *rover);
+int nf_nat_l4proto_unique_tuple(const struct nf_nat_l3proto *l3proto,
+				struct nf_conntrack_tuple *tuple,
+				const struct nf_nat_range *range,
+				enum nf_nat_manip_type maniptype,
+				const struct nf_conn *ct, u16 *rover);
 
 int nf_nat_l4proto_nlattr_to_range(struct nlattr *tb[],
 				   struct nf_nat_range *range);

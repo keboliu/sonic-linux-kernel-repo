@@ -34,7 +34,7 @@ bool nf_nat_l4proto_in_range(const struct nf_conntrack_tuple *tuple,
 }
 EXPORT_SYMBOL_GPL(nf_nat_l4proto_in_range);
 
-void nf_nat_l4proto_unique_tuple(const struct nf_nat_l3proto *l3proto,
+int nf_nat_l4proto_unique_tuple(const struct nf_nat_l3proto *l3proto,
 				 struct nf_conntrack_tuple *tuple,
 				 const struct nf_nat_range *range,
 				 enum nf_nat_manip_type maniptype,
@@ -54,7 +54,7 @@ void nf_nat_l4proto_unique_tuple(const struct nf_nat_l3proto *l3proto,
 	if (!(range->flags & NF_NAT_RANGE_PROTO_SPECIFIED)) {
 		/* If it's dst rewrite, can't change port */
 		if (maniptype == NF_NAT_MANIP_DST)
-			return;
+			return 0;
 
 		if (ntohs(*portptr) < 1024) {
 			/* Loose convention: >> 512 is credential passing */
@@ -85,16 +85,27 @@ void nf_nat_l4proto_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		off = prandom_u32();
 	} else {
 		off = *rover;
+		if ((range->flags & NF_NAT_RANGE_FULLCONE) && (maniptype == NF_NAT_MANIP_SRC)) {
+			/* Try from the next L4 port in the range */
+			off++;
+		}
 	}
 
-	for (i = 0; ; ++off) {
+	for (i = 0; (i != range_size); ++i, ++off) {
 		*portptr = htons(min + off % range_size);
-		if (++i != range_size && nf_nat_used_tuple(tuple, ct))
-			continue;
+
+		if ((range->flags & NF_NAT_RANGE_FULLCONE) && (maniptype == NF_NAT_MANIP_SRC)) {
+			if (nf_nat_used_3_tuple(tuple, ct, maniptype))
+				continue;
+		} else {
+			if (nf_nat_used_tuple(tuple, ct))
+				continue;
+		}
 		if (!(range->flags & NF_NAT_RANGE_PROTO_RANDOM_ALL))
 			*rover = off;
-		return;
+		return 1;
 	}
+	return 0;
 }
 EXPORT_SYMBOL_GPL(nf_nat_l4proto_unique_tuple);
 
