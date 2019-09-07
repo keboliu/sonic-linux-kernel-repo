@@ -27,7 +27,7 @@ icmp_in_range(const struct nf_conntrack_tuple *tuple,
 	       ntohs(tuple->src.u.icmp.id) <= ntohs(max->icmp.id);
 }
 
-static void
+static int
 icmp_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		  struct nf_conntrack_tuple *tuple,
 		  const struct nf_nat_range2 *range,
@@ -48,9 +48,9 @@ icmp_unique_tuple(const struct nf_nat_l3proto *l3proto,
 		tuple->src.u.icmp.id = htons(ntohs(range->min_proto.icmp.id) +
 					     (id % range_size));
 		if (++i == range_size || !nf_nat_used_tuple(tuple, ct))
-			return;
+			return 1;
 	}
-	return;
+	return 0;
 }
 
 static bool

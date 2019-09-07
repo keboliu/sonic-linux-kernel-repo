@@ -51,6 +51,12 @@ struct nf_conn_nat *nf_ct_nat_ext_add(struct nf_conn *ct);
 int nf_nat_used_tuple(const struct nf_conntrack_tuple *tuple,
 		      const struct nf_conn *ignored_conntrack);
 
+/* Is this 3-tuple already taken? (not by us)*/
+int
+nf_nat_used_3_tuple(const struct nf_conntrack_tuple *tuple,
+		    const struct nf_conn *ignored_conntrack,
+		    enum nf_nat_manip_type maniptype);
+
 static inline struct nf_conn_nat *nfct_nat(const struct nf_conn *ct)
 {
 #if defined(CONFIG_NF_NAT) || defined(CONFIG_NF_NAT_MODULE)
