@@ -98,6 +98,12 @@ static void		rt6_do_redirect(struct dst_entry *dst, struct sock *sk,
 					struct sk_buff *skb);
 static void		rt6_dst_from_metrics_check(struct rt6_info *rt);
 static int rt6_score_route(struct rt6_info *rt, int oif, int strict);
+static size_t rt6_nlmsg_size(struct rt6_info *rt);
+static int rt6_fill_node(struct net *net,
+			 struct sk_buff *skb, struct rt6_info *rt,
+			 struct in6_addr *dst, struct in6_addr *src,
+			 int iif, int type, u32 portid, u32 seq,
+			 int prefix, int nowait, unsigned int flags);
 
 #ifdef CONFIG_IPV6_ROUTE_INFO
 static struct rt6_info *rt6_add_route_info(struct net *net,
@@ -2185,6 +2191,57 @@ int ip6_del_rt(struct rt6_info *rt)
 	return __ip6_del_rt(rt, &info);
 }
 
+static int __ip6_del_rt_siblings(struct rt6_info *rt, struct fib6_config *cfg)
+{
+	struct nl_info *info = &cfg->fc_nlinfo;
+	struct net *net = info->nl_net;
+	struct sk_buff *skb = NULL;
+	struct fib6_table *table;
+	int err = -ENOENT;
+
+	if (rt == net->ipv6.ip6_null_entry)
+		goto out_put;
+	table = rt->rt6i_table;
+	write_lock_bh(&table->tb6_lock);
+
+	if (rt->rt6i_nsiblings && cfg->fc_delete_all_nh) {
+		struct rt6_info *sibling, *next_sibling;
+
+		/* prefer to send a single notification with all hops */
+		skb = nlmsg_new(rt6_nlmsg_size(rt), gfp_any());
+		if (skb) {
+			u32 seq = info->nlh ? info->nlh->nlmsg_seq : 0;
+
+			if (rt6_fill_node(net, skb, rt,
+					  NULL, NULL, 0, RTM_DELROUTE,
+					  info->portid, seq, 0, 0, 0) < 0) {
+				kfree_skb(skb);
+				skb = NULL;
+			}
+		}
+
+		list_for_each_entry_safe(sibling, next_sibling,
+					 &rt->rt6i_siblings,
+					 rt6i_siblings) {
+			err = fib6_del(sibling, info);
+			if (err)
+				goto out_unlock;
+		}
+	}
+
+	err = fib6_del(rt, info);
+out_unlock:
+	write_unlock_bh(&table->tb6_lock);
+out_put:
+	ip6_rt_put(rt);
+
+	if (skb) {
+		rtnl_notify(skb, net, info->portid, RTNLGRP_IPV6_ROUTE,
+			    info->nlh, gfp_any());
+	}
+	return err;
+}
+
 static int ip6_route_del(struct fib6_config *cfg)
 {
 	struct fib6_table *table;
@@ -2221,7 +2278,11 @@ static int ip6_route_del(struct fib6_config *cfg)
 			dst_hold(&rt->dst);
 			read_unlock_bh(&table->tb6_lock);
 
-			return __ip6_del_rt(rt, &cfg->fc_nlinfo);
+            /* if gateway was specified only delete the one hop */
+            if (cfg->fc_flags & RTF_GATEWAY)
+			    return __ip6_del_rt(rt, &cfg->fc_nlinfo);
+
+		    return __ip6_del_rt_siblings(rt, cfg);
 		}
 	}
 	read_unlock_bh(&table->tb6_lock);
@@ -3170,8 +3231,10 @@ static int inet6_rtm_delroute(struct sk_buff *skb, struct nlmsghdr *nlh)
 
 	if (cfg.fc_mp)
 		return ip6_route_multipath_del(&cfg);
-	else
+	else {
+		cfg.fc_delete_all_nh = 1;
 		return ip6_route_del(&cfg);
+	}
 }
 
 static int inet6_rtm_newroute(struct sk_buff *skb, struct nlmsghdr *nlh)
