@@ -375,7 +375,6 @@ static int dni_dps460_remove(struct i2c_client *client)
 	sysfs_remove_group(&client->dev.kobj, &dni_dps460_attr_grp);
 	if (data->info)
 		kfree(data->info);
-	pmbus_do_remove(client);
 	return 0;
 }
 
