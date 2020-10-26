@@ -151,7 +151,6 @@ static struct i2c_driver dps1900_driver = {
 		.name = "dps1900",
 	},
 	.probe = dps1900_probe,
-	.remove = pmbus_do_remove,
 	.id_table = dps1900_id,
 };
 

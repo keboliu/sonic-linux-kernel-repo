@@ -531,7 +531,6 @@ static struct i2c_driver lm25066_driver = {
 		   .name = "lm25066",
 		   },
 	.probe_new = lm25066_probe,
-	.remove = pmbus_do_remove,
 	.id_table = lm25066_id,
 };
 
