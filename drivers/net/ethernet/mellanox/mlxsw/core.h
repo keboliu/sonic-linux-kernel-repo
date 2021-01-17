@@ -29,6 +29,8 @@ void mlxsw_core_max_ports_set(struct mlxsw_core *mlxsw_core,
 			      unsigned int max_ports);
 void *mlxsw_core_driver_priv(struct mlxsw_core *mlxsw_core);
 
+bool mlxsw_core_res_query_enabled(const struct mlxsw_core *mlxsw_core);
+
 int mlxsw_core_driver_register(struct mlxsw_driver *mlxsw_driver);
 void mlxsw_core_driver_unregister(struct mlxsw_driver *mlxsw_driver);
 
