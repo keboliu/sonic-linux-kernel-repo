@@ -1054,6 +1054,19 @@ static int mlxsw_sp_get_module_eeprom(struct net_device *netdev,
 }
 
 static int
+mlxsw_sp_get_module_eeprom_by_page(struct net_device *dev,
+				   const struct ethtool_module_eeprom *page,
+				   struct netlink_ext_ack *extack)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(dev);
+	struct mlxsw_sp *mlxsw_sp = mlxsw_sp_port->mlxsw_sp;
+	u8 module = mlxsw_sp_port->mapping.module;
+
+	return mlxsw_env_get_module_eeprom_by_page(mlxsw_sp->core, module, page,
+						   extack);
+}
+
+static int
 mlxsw_sp_get_ts_info(struct net_device *netdev, struct ethtool_ts_info *info)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = netdev_priv(netdev);
@@ -1063,20 +1076,21 @@ mlxsw_sp_get_ts_info(struct net_device *netdev, struct ethtool_ts_info *info)
 }
 
 const struct ethtool_ops mlxsw_sp_port_ethtool_ops = {
-	.get_drvinfo		= mlxsw_sp_port_get_drvinfo,
-	.get_link		= ethtool_op_get_link,
-	.get_link_ext_state	= mlxsw_sp_port_get_link_ext_state,
-	.get_pauseparam		= mlxsw_sp_port_get_pauseparam,
-	.set_pauseparam		= mlxsw_sp_port_set_pauseparam,
-	.get_strings		= mlxsw_sp_port_get_strings,
-	.set_phys_id		= mlxsw_sp_port_set_phys_id,
-	.get_ethtool_stats	= mlxsw_sp_port_get_stats,
-	.get_sset_count		= mlxsw_sp_port_get_sset_count,
-	.get_link_ksettings	= mlxsw_sp_port_get_link_ksettings,
-	.set_link_ksettings	= mlxsw_sp_port_set_link_ksettings,
-	.get_module_info	= mlxsw_sp_get_module_info,
-	.get_module_eeprom	= mlxsw_sp_get_module_eeprom,
-	.get_ts_info		= mlxsw_sp_get_ts_info,
+	.get_drvinfo			= mlxsw_sp_port_get_drvinfo,
+	.get_link			= ethtool_op_get_link,
+	.get_link_ext_state		= mlxsw_sp_port_get_link_ext_state,
+	.get_pauseparam			= mlxsw_sp_port_get_pauseparam,
+	.set_pauseparam			= mlxsw_sp_port_set_pauseparam,
+	.get_strings			= mlxsw_sp_port_get_strings,
+	.set_phys_id			= mlxsw_sp_port_set_phys_id,
+	.get_ethtool_stats		= mlxsw_sp_port_get_stats,
+	.get_sset_count			= mlxsw_sp_port_get_sset_count,
+	.get_link_ksettings		= mlxsw_sp_port_get_link_ksettings,
+	.set_link_ksettings		= mlxsw_sp_port_set_link_ksettings,
+	.get_module_info		= mlxsw_sp_get_module_info,
+	.get_module_eeprom		= mlxsw_sp_get_module_eeprom,
+	.get_module_eeprom_by_page	= mlxsw_sp_get_module_eeprom_by_page,
+	.get_ts_info			= mlxsw_sp_get_ts_info,
 };
 
 struct mlxsw_sp1_port_link_mode {
