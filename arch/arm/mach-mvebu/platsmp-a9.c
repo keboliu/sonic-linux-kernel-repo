@@ -17,12 +17,15 @@
 #include <linux/of.h>
 #include <linux/smp.h>
 #include <linux/mbus.h>
+#include <linux/delay.h>
+#include <linux/completion.h>
 #include <asm/smp_scu.h>
 #include <asm/smp_plat.h>
 #include "common.h"
 #include "pmsu.h"
 
 extern void mvebu_cortex_a9_secondary_startup(void);
+static DECLARE_COMPLETION(cpu_wait);
 
 static int mvebu_cortex_a9_boot_secondary(unsigned int cpu,
 						    struct task_struct *idle)
@@ -44,6 +47,7 @@ static int mvebu_cortex_a9_boot_secondary(unsigned int cpu,
 		mvebu_pmsu_set_cpu_boot_addr(hw_cpu, mvebu_cortex_a9_secondary_startup);
 	smp_wmb();
 
+	wait_for_completion_timeout(&cpu_wait, usecs_to_jiffies(10));
 	/*
 	 * Doing this before deasserting the CPUs is needed to wake up CPUs
 	 * in the offline state after using CPU hotplug.
