@@ -334,7 +334,7 @@ static int mlxreg_fan_set_cur_state(struct thermal_cooling_device *cdev,
 		 * For configuration non-zero value is to be returned to avoid thermal
 		 * statistics update.
 		 */
-		config = 1;
+		config = 0; /*1*/;
 		state -= MLXREG_FAN_MAX_STATE;
 		for (i = 0; i < state; i++)
 			fan->cooling_levels[i] = state;
