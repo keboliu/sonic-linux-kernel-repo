@@ -289,6 +289,17 @@ struct ethtool_module_eeprom {
 };
 
 /**
+ * struct ethtool_module_power_mode_params - module power mode parameters
+ * @policy: The power mode policy enforced by the host for the plug-in module.
+ * @mode: The operational power mode of the plug-in module. Should be filled by
+ *	device drivers on get operations.
+ */
+struct ethtool_module_power_mode_params {
+	enum ethtool_module_power_mode_policy policy;
+	enum ethtool_module_power_mode mode;
+};
+
+/**
  * struct ethtool_ops - optional netdev operations
  * @supported_coalesce_params: supported types of interrupt coalescing.
  * @get_drvinfo: Report driver/device information.  Should only set the
@@ -434,6 +445,11 @@ struct ethtool_module_eeprom {
  * @get_module_eeprom_by_page: Get a region of plug-in module EEPROM data from
  *	specified page. Returns a negative error code or the amount of bytes
  *	read.
+ * @get_module_power_mode: Get the power mode policy for the plug-in module
+ *	used by the network device and its operational power mode, if
+ *	plugged-in.
+ * @set_module_power_mode: Set the power mode policy for the plug-in module
+ *	used by the network device.
  *
  * All operations are optional (i.e. the function pointer may be set
  * to %NULL) and callers must take this into account.  Callers must
@@ -541,6 +557,12 @@ struct ethtool_ops {
 	int	(*get_module_eeprom_by_page)(struct net_device *dev,
 					     const struct ethtool_module_eeprom *page,
 					     struct netlink_ext_ack *extack);
+	int	(*get_module_power_mode)(struct net_device *dev,
+					 struct ethtool_module_power_mode_params *params,
+					 struct netlink_ext_ack *extack);
+	int	(*set_module_power_mode)(struct net_device *dev,
+					 const struct ethtool_module_power_mode_params *params,
+					 struct netlink_ext_ack *extack);
 };
 
 int ethtool_check_ops(const struct ethtool_ops *ops);
