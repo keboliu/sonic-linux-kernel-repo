@@ -53,7 +53,11 @@ int pciehp_configure_device(struct slot *p_slot)
 	for_each_pci_bridge(dev, parent)
 		pci_hp_add_bridge(dev);
 
-	pci_assign_unassigned_bridge_resources(bridge);
+	if (pci_bus_resize_prefmem(parent)) {
+		pci_bus_assign_resources(parent);
+	} else {
+		pci_assign_unassigned_bridge_resources(bridge);
+	}
 	pcie_bus_configure_settings(parent);
 	pci_bus_add_devices(parent);
 

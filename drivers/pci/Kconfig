@@ -144,6 +144,12 @@ config PCI_HYPERV
           The PCI device frontend driver allows the kernel to import arbitrary
           PCI devices from a PCI backend to support PCI driver domains.
 
+config PCI_REASSIGN_PREF_MEM
+	bool "PCI reassign prefetchable memory"
+	depends on PCI
+	help
+	  This allows all PCI devices' prefetchable memory resources to be reassigned.
+
 source "drivers/pci/hotplug/Kconfig"
 source "drivers/pci/controller/Kconfig"
 source "drivers/pci/endpoint/Kconfig"
