@@ -867,8 +867,16 @@ static int piix4_add_adapters_sb800(struct pci_dev *dev, unsigned short smba,
 	struct i2c_piix4_adapdata *adapdata;
 	int port;
 	int retval;
+	int adapters = PIIX4_MAX_ADAPTERS;
 
-	for (port = 0; port < PIIX4_MAX_ADAPTERS; port++) {
+	/* Arista BUG204903: don't use muxed adapters on Hudson 2
+	 * because we want AUX bus to be i2c-1
+	 */
+	if (dev->vendor == PCI_VENDOR_ID_AMD &&
+	    dev->device == PCI_DEVICE_ID_AMD_HUDSON2_SMBUS)
+		adapters = 1;
+
+	for (port = 0; port < adapters; port++) {
 		retval = piix4_add_adapter(dev, smba, true, port, notify_imc,
 					   piix4_main_port_names_sb800[port],
 					   &piix4_main_adapters[port]);
