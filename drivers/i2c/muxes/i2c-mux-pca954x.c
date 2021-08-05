@@ -198,6 +198,11 @@ static const struct i2c_device_id pca954x_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, pca954x_id);
 
+/* Force deselect-on-exit feature for PCA954X devices. Default is disabled. */
+static unsigned int force_deselect_on_exit = 0;
+module_param(force_deselect_on_exit, uint, S_IRUGO);
+MODULE_PARM_DESC(force_deselect_on_exit, "Force deselect-on-exit feature for PCA954X devices. Default is disabled.");
+
 #ifdef CONFIG_OF
 static const struct of_device_id pca954x_of_match[] = {
 	{ .compatible = "nxp,pca9540", .data = &chips[pca_9540] },
@@ -476,7 +481,7 @@ static int pca954x_probe(struct i2c_client *client,
 
 	idle_disconnect_dt = np &&
 		of_property_read_bool(np, "i2c-mux-idle-disconnect");
-	if (idle_disconnect_dt)
+	if (idle_disconnect_dt || force_deselect_on_exit)
 		data->idle_state = MUX_IDLE_DISCONNECT;
 
 	ret = pca954x_irq_setup(muxc);
