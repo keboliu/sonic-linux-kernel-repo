@@ -101,16 +101,16 @@ int mdio_mux_init(struct device *dev,
 		  struct mii_bus *mux_bus)
 {
 	struct device_node *parent_bus_node;
-	struct device_node *child_bus_node;
+	struct fwnode_handle *child_bus_node;
 	int r, ret_val;
 	struct mii_bus *parent_bus;
 	struct mdio_mux_parent_bus *pb;
 	struct mdio_mux_child_bus *cb;
 
-	if (!mux_node)
-		return -ENODEV;
-
 	if (!mux_bus) {
+		if (!mux_node)
+			return -ENODEV;
+
 		parent_bus_node = of_parse_phandle(mux_node,
 						   "mdio-parent-bus", 0);
 
@@ -141,16 +141,20 @@ int mdio_mux_init(struct device *dev,
 	pb->mii_bus = parent_bus;
 
 	ret_val = -ENODEV;
-	for_each_available_child_of_node(mux_node, child_bus_node) {
-		int v;
+	device_for_each_child_node(dev, child_bus_node) {
+		u32 v;
+		u32 phy_mask;
 
-		r = of_property_read_u32(child_bus_node, "reg", &v);
+		r = fwnode_property_read_u32(child_bus_node, "reg", &v);
 		if (r) {
 			dev_err(dev,
 				"Error: Failed to find reg for child %pOF\n",
 				child_bus_node);
 			continue;
 		}
+		r = fwnode_property_read_u32(child_bus_node, "phy_mask", &phy_mask);
+		if (r)
+			phy_mask = 0;
 
 		cb = devm_kzalloc(dev, sizeof(*cb), GFP_KERNEL);
 		if (!cb) {
@@ -173,7 +177,12 @@ int mdio_mux_init(struct device *dev,
 		cb->mii_bus->parent = dev;
 		cb->mii_bus->read = mdio_mux_read;
 		cb->mii_bus->write = mdio_mux_write;
-		r = of_mdiobus_register(cb->mii_bus, child_bus_node);
+		cb->mii_bus->phy_mask = phy_mask;
+		if (is_of_node(child_bus_node))
+			r = of_mdiobus_register(cb->mii_bus, to_of_node(child_bus_node));
+		else
+			r = mdiobus_register(cb->mii_bus);
+
 		if (r) {
 			mdiobus_free(cb->mii_bus);
 			if (r == -EPROBE_DEFER) {
@@ -199,7 +208,7 @@ int mdio_mux_init(struct device *dev,
 
 err_loop:
 	mdio_mux_uninit_children(pb);
-	of_node_put(child_bus_node);
+	fwnode_handle_put(child_bus_node);
 err_pb_kz:
 	put_device(&parent_bus->dev);
 err_parent_bus:
