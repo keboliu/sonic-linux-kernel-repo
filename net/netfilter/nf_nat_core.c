@@ -33,6 +33,7 @@ static DEFINE_MUTEX(nf_nat_proto_mutex);
 static unsigned int nat_net_id __read_mostly;
 
 static struct hlist_head *nf_nat_bysource __read_mostly;
+static struct hlist_head *nf_nat_by_manip_src __read_mostly;
 static unsigned int nf_nat_htable_size __read_mostly;
 static unsigned int nf_nat_hash_rnd __read_mostly;
 
@@ -200,6 +201,31 @@ hash_by_src(const struct net *n, const struct nf_conntrack_tuple *tuple)
 	return reciprocal_scale(hash, nf_nat_htable_size);
 }
 
+static inline unsigned int
+hash_by_dst(const struct net *n, const struct nf_conntrack_tuple *tuple)
+{
+	unsigned int hash;
+
+	get_random_once(&nf_nat_hash_rnd, sizeof(nf_nat_hash_rnd));
+
+	hash = jhash2((u32 *)&tuple->dst, sizeof(tuple->dst) / sizeof(u32),
+       tuple->dst.protonum ^ nf_nat_hash_rnd ^ net_hash_mix(n));
+
+	return reciprocal_scale(hash, nf_nat_htable_size);
+}
+
+static inline int
+same_reply_dst(const struct nf_conn *ct,
+              const struct nf_conntrack_tuple *tuple)
+{
+	const struct nf_conntrack_tuple *t;
+
+	t = &ct->tuplehash[IP_CT_DIR_REPLY].tuple;
+	return (t->dst.protonum == tuple->dst.protonum &&
+		nf_inet_addr_cmp(&t->dst.u3, &tuple->dst.u3) &&
+		t->dst.u.all == tuple->dst.u.all);
+}
+
 /* Is this tuple already taken? (not by us) */
 static int
 nf_nat_used_tuple(const struct nf_conntrack_tuple *tuple,
@@ -215,6 +241,38 @@ nf_nat_used_tuple(const struct nf_conntrack_tuple *tuple,
 
 	nf_ct_invert_tuple(&reply, tuple);
 	return nf_conntrack_tuple_taken(&reply, ignored_conntrack);
+}
+
+/* Is this 3-tuple already taken? (not by us) */
+int
+nf_nat_used_3_tuple(const struct nf_conntrack_tuple *tuple,
+                   const struct nf_conn *ignored_conntrack,
+                   enum nf_nat_manip_type maniptype)
+{
+	const struct nf_conn *ct;
+	const struct nf_conntrack_zone *zone;
+	unsigned int h;
+	struct net *net = nf_ct_net(ignored_conntrack);
+
+	/* 3-tuple uniqueness is required for translated source only */
+	if (maniptype != NF_NAT_MANIP_SRC) {
+		return 0;
+	}
+	zone = nf_ct_zone(ignored_conntrack);
+
+	/* The tuple passed here is the inverted reply (with translated source) */
+	h = hash_by_src(net, tuple);
+	hlist_for_each_entry_rcu(ct, &nf_nat_by_manip_src[h], nat_by_manip_src) {
+		struct nf_conntrack_tuple reply;
+		nf_ct_invert_tuple(&reply, tuple);
+		/* Compare against the destination in the reply */
+		if (same_reply_dst(ct, &reply) &&
+		    net_eq(net, nf_ct_net(ct)) &&
+		    nf_ct_zone_equal(ct, zone, IP_CT_DIR_ORIGINAL)) {
+			return 1;
+		}
+	}
+	return 0;
 }
 
 static bool nf_nat_inet_in_range(const struct nf_conntrack_tuple *t,
@@ -318,6 +376,34 @@ find_appropriate_src(struct net *net,
 	return 0;
 }
 
+/* Only called for DST manip */
+static int
+find_appropriate_dst(struct net *net,
+		     const struct nf_conntrack_zone *zone,
+		     const struct nf_conntrack_tuple *tuple,
+		     struct nf_conntrack_tuple *result)
+{
+	struct nf_conntrack_tuple reply;
+	unsigned int h;
+	const struct nf_conn *ct;
+
+	nf_ct_invert_tuple(&reply, tuple);
+	h = hash_by_src(net, &reply);
+
+	hlist_for_each_entry_rcu(ct, &nf_nat_by_manip_src[h], nat_by_manip_src) {
+		if (same_reply_dst(ct, tuple) &&
+		    net_eq(net, nf_ct_net(ct)) &&
+		    nf_ct_zone_equal(ct, zone, IP_CT_DIR_REPLY)) {
+			/* Copy destination part from original tuple. */
+			nf_ct_invert_tuple(result,
+					     &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple);
+			result->src = tuple->src;
+			return 1;
+		}
+	}
+	return 0;
+}
+
 /* For [FUTURE] fragmentation handling, we want the least-used
  * src-ip/dst-ip/proto triple.  Fairness doesn't come into it.  Thus
  * if the range specifies 1.2.3.4 ports 10000-10005 and 1.2.3.5 ports
@@ -397,10 +483,10 @@ find_best_ips_proto(const struct nf_conntrack_zone *zone,
  *
  * Per-protocol part of tuple is initialized to the incoming packet.
  */
-static void nf_nat_l4proto_unique_tuple(struct nf_conntrack_tuple *tuple,
-					const struct nf_nat_range2 *range,
-					enum nf_nat_manip_type maniptype,
-					const struct nf_conn *ct)
+static int nf_nat_l4proto_unique_tuple(struct nf_conntrack_tuple *tuple,
+				       const struct nf_nat_range2 *range,
+				       enum nf_nat_manip_type maniptype,
+				       const struct nf_conn *ct)
 {
 	unsigned int range_size, min, max, i, attempts;
 	__be16 *keyptr;
@@ -426,7 +512,7 @@ static void nf_nat_l4proto_unique_tuple(struct nf_conntrack_tuple *tuple,
 		/* If there is no master conntrack we are not PPTP,
 		   do not change tuples */
 		if (!ct->master)
-			return;
+			return 1;
 
 		if (maniptype == NF_NAT_MANIP_SRC)
 			keyptr = &tuple->src.u.gre.key;
@@ -454,14 +540,14 @@ static void nf_nat_l4proto_unique_tuple(struct nf_conntrack_tuple *tuple,
 
 		break;
 	default:
-		return;
+		return 0;
 	}
 
 	/* If no range specified... */
 	if (!(range->flags & NF_NAT_RANGE_PROTO_SPECIFIED)) {
 		/* If it's dst rewrite, can't change port */
 		if (maniptype == NF_NAT_MANIP_DST)
-			return;
+			return 0;
 
 		if (ntohs(*keyptr) < 1024) {
 			/* Loose convention: >> 512 is credential passing */
@@ -503,12 +589,18 @@ find_free_id:
 another_round:
 	for (i = 0; i < attempts; i++, off++) {
 		*keyptr = htons(min + off % range_size);
-		if (!nf_nat_used_tuple(tuple, ct))
-			return;
+
+		if ((range->flags & NF_NAT_RANGE_FULLCONE) && (maniptype == NF_NAT_MANIP_SRC)) {
+			if (! nf_nat_used_3_tuple(tuple, ct, maniptype))
+				return 1;
+		} else {
+			if (! nf_nat_used_tuple(tuple, ct))
+				return 1;
+		}
 	}
 
 	if (attempts >= range_size || attempts < 16)
-		return;
+		return 0;
 	attempts /= 2;
 	off = prandom_u32();
 	goto another_round;
@@ -517,10 +609,15 @@ another_round:
 /* Manipulate the tuple into the range given. For NF_INET_POST_ROUTING,
  * we change the source to map into the range. For NF_INET_PRE_ROUTING
  * and NF_INET_LOCAL_OUT, we change the destination to map into the
- * range. It might not be possible to get a unique tuple, but we try.
+ * range. It might not be possible to get a unique 5-tuple, but we try.
  * At worst (or if we race), we will end up with a final duplicate in
- * __nf_conntrack_confirm and drop the packet. */
-static void
+ * __nf_conntrack_confirm and drop the packet.
+ * If the range is of type fullcone, if we end up with a 3-tuple
+ * duplicate, we do not wait till the packet reaches the
+ * nf_conntrack_confirm to drop the packet. Instead return the packet
+ * to be dropped at this stage.
+ */
+static int
 get_unique_tuple(struct nf_conntrack_tuple *tuple,
 		 const struct nf_conntrack_tuple *orig_tuple,
 		 const struct nf_nat_range2 *range,
@@ -528,7 +625,10 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
 		 enum nf_nat_manip_type maniptype)
 {
 	const struct nf_conntrack_zone *zone;
+	struct nf_nat_range2 nat_range;
 	struct net *net = nf_ct_net(ct);
+
+	memcpy(&nat_range, range, sizeof(struct nf_nat_range2));
 
 	zone = nf_ct_zone(ct);
 
@@ -541,46 +641,76 @@ get_unique_tuple(struct nf_conntrack_tuple *tuple,
 	 * manips not an issue.
 	 */
 	if (maniptype == NF_NAT_MANIP_SRC &&
-	    !(range->flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
+		!(nat_range.flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
 		/* try the original tuple first */
-		if (in_range(orig_tuple, range)) {
+		if (in_range(orig_tuple, &nat_range)) {
 			if (!nf_nat_used_tuple(orig_tuple, ct)) {
 				*tuple = *orig_tuple;
-				return;
+				goto out;
 			}
 		} else if (find_appropriate_src(net, zone,
-						orig_tuple, tuple, range)) {
+						orig_tuple, tuple, &nat_range)) {
 			pr_debug("get_unique_tuple: Found current src map\n");
 			if (!nf_nat_used_tuple(tuple, ct))
-				return;
+				goto out;
 		}
 	}
 
+	if (maniptype == NF_NAT_MANIP_DST) {
+		if (nat_range.flags & NF_NAT_RANGE_FULLCONE) {
+			/* Destination IP range does not apply when fullcone flag is set. */
+			nat_range.min_addr.ip = nat_range.max_addr.ip = orig_tuple->dst.u3.ip;
+			nat_range.min_proto.all = nat_range.max_proto.all = 0;
+
+			/* If this dstip/proto/dst-proto-part is mapped currently
+			 * as a translated source for a given tuple, use that
+			 */
+			if (find_appropriate_dst(net, zone,
+						 orig_tuple, tuple)) {
+				if (!nf_nat_used_tuple(tuple, ct)) {
+					goto out;
+				}
+			} else {
+				/* If not mapped, proceed with the original tuple */
+				*tuple = *orig_tuple;
+				goto out;
+			}
+ 		}
+ 	}
+
 	/* 2) Select the least-used IP/proto combination in the given range */
 	*tuple = *orig_tuple;
-	find_best_ips_proto(zone, tuple, range, ct, maniptype);
+	find_best_ips_proto(zone, tuple, &nat_range, ct, maniptype);
 
 	/* 3) The per-protocol part of the manip is made to map into
 	 * the range to make a unique tuple.
 	 */
 
 	/* Only bother mapping if it's not already in range and unique */
-	if (!(range->flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
-		if (range->flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
-			if (!(range->flags & NF_NAT_RANGE_PROTO_OFFSET) &&
+	if (!(nat_range.flags & NF_NAT_RANGE_PROTO_RANDOM_ALL)) {
+		if (nat_range.flags & NF_NAT_RANGE_PROTO_SPECIFIED) {
+			if (!(nat_range.flags & NF_NAT_RANGE_PROTO_OFFSET) &&
 			    l4proto_in_range(tuple, maniptype,
-			          &range->min_proto,
-			          &range->max_proto) &&
-			    (range->min_proto.all == range->max_proto.all ||
-			     !nf_nat_used_tuple(tuple, ct)))
-				return;
+					     &(nat_range.min_proto),
+					     &(nat_range.max_proto))) {
+				if (nat_range.flags & NF_NAT_RANGE_FULLCONE) {
+					if (!nf_nat_used_3_tuple(tuple, ct, maniptype))
+						goto out;
+				} else {
+					if ((nat_range.min_proto.all == nat_range.max_proto.all) ||
+					    !nf_nat_used_tuple(tuple, ct))
+						goto out;
+				}
+			}
 		} else if (!nf_nat_used_tuple(tuple, ct)) {
-			return;
+			goto out;
 		}
 	}
 
 	/* Last chance: get protocol to try to obtain unique tuple. */
-	nf_nat_l4proto_unique_tuple(tuple, range, maniptype, ct);
+	return nf_nat_l4proto_unique_tuple(tuple, &nat_range, maniptype, ct);
+out:
+	return 1;
 }
 
 struct nf_conn_nat *nf_ct_nat_ext_add(struct nf_conn *ct)
@@ -622,7 +752,9 @@ nf_nat_setup_info(struct nf_conn *ct,
 	nf_ct_invert_tuple(&curr_tuple,
 			   &ct->tuplehash[IP_CT_DIR_REPLY].tuple);
 
-	get_unique_tuple(&new_tuple, &curr_tuple, range, ct, maniptype);
+	if (! get_unique_tuple(&new_tuple, &curr_tuple, range, ct, maniptype)) {
+		return NF_DROP;
+	}
 
 	if (!nf_ct_tuple_equal(&new_tuple, &curr_tuple)) {
 		struct nf_conntrack_tuple reply;
@@ -644,12 +776,16 @@ nf_nat_setup_info(struct nf_conn *ct,
 
 	if (maniptype == NF_NAT_MANIP_SRC) {
 		unsigned int srchash;
+		unsigned int manip_src_hash;
 		spinlock_t *lock;
 
+		manip_src_hash = hash_by_src(net, &new_tuple);
 		srchash = hash_by_src(net,
 				      &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple);
 		lock = &nf_nat_locks[srchash % CONNTRACK_LOCKS];
 		spin_lock_bh(lock);
+		hlist_add_head_rcu(&ct->nat_by_manip_src,
+				   &nf_nat_by_manip_src[manip_src_hash]);
 		hlist_add_head_rcu(&ct->nat_bysource,
 				   &nf_nat_bysource[srchash]);
 		spin_unlock_bh(lock);
@@ -818,6 +954,7 @@ static void __nf_nat_cleanup_conntrack(struct nf_conn *ct)
 	h = hash_by_src(nf_ct_net(ct), &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple);
 	spin_lock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
 	hlist_del_rcu(&ct->nat_bysource);
+	hlist_del_rcu(&ct->nat_by_manip_src);
 	spin_unlock_bh(&nf_nat_locks[h % CONNTRACK_LOCKS]);
 }
 
@@ -1161,9 +1298,14 @@ static int __init nf_nat_init(void)
 	if (!nf_nat_bysource)
 		return -ENOMEM;
 
+	nf_nat_by_manip_src = nf_ct_alloc_hashtable(&nf_nat_htable_size, 0);
+	if (!nf_nat_by_manip_src)
+		return -ENOMEM;
+
 	ret = nf_ct_extend_register(&nat_extend);
 	if (ret < 0) {
 		kvfree(nf_nat_bysource);
+		kvfree(nf_nat_by_manip_src);
 		pr_err("Unable to register extension\n");
 		return ret;
 	}
@@ -1175,6 +1317,7 @@ static int __init nf_nat_init(void)
 	if (ret < 0) {
 		nf_ct_extend_unregister(&nat_extend);
 		kvfree(nf_nat_bysource);
+		kvfree(nf_nat_by_manip_src);
 		return ret;
 	}
 
@@ -1198,6 +1341,7 @@ static void __exit nf_nat_cleanup(void)
 
 	synchronize_net();
 	kvfree(nf_nat_bysource);
+	kvfree(nf_nat_by_manip_src);
 	unregister_pernet_subsys(&nat_net_ops);
 }
 
