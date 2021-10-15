@@ -21,6 +21,7 @@
 #include <linux/sched/task_stack.h>
 #include <linux/spi/flash.h>
 #include <linux/mtd/spi-nor.h>
+#include <linux/acpi.h>
 
 #include "core.h"
 
@@ -3480,6 +3481,15 @@ static const struct of_device_id spi_nor_of_table[] = {
 };
 MODULE_DEVICE_TABLE(of, spi_nor_of_table);
 
+#ifdef CONFIG_ACPI
+static const struct acpi_device_id spi_nor_acpi_table[] = {
+	{ "JEDEC,SPI-NOR", 0 },
+	{ "ACPI0000", 0 },
+	{}
+};
+MODULE_DEVICE_TABLE(acpi, spi_nor_acpi_table);
+#endif
+
 /*
  * REVISIT: many of these chips have deep power-down modes, which
  * should clearly be entered on suspend() to minimize power use.
@@ -3490,6 +3500,7 @@ static struct spi_mem_driver spi_nor_driver = {
 		.driver = {
 			.name = "spi-nor",
 			.of_match_table = spi_nor_of_table,
+			.acpi_match_table = ACPI_PTR(spi_nor_acpi_table),
 		},
 		.id_table = spi_nor_dev_ids,
 	},
