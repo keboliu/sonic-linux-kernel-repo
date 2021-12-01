@@ -5765,3 +5765,48 @@ static void nvidia_ion_ahci_fixup(struct pci_dev *pdev)
 	pdev->dev_flags |= PCI_DEV_FLAGS_HAS_MSI_MASKING;
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_NVIDIA, 0x0ab8, nvidia_ion_ahci_fixup);
+
+#define PCI_DEVICE_ID_LEABA_PACIFIC    0xabcd
+#define PCI_DEVICE_ID_LEABA_GIBRALTAR  0xa001
+#define PCI_DEVICE_ID_LEABA_GRAPHENE   0xa003
+#define PCI_DEVICE_ID_LEABA_PALLADIUM  0xa004
+#define PCI_DEVICE_ID_LEABA_ARGON      0xa005
+#define PCI_DEVICE_ID_LEABA_KRYPTON    0xa006
+
+/*
+ * For Pacific A0, only BAR 0 is valid
+ */
+static void silicon_one_fixup(struct pci_dev *dev)
+{
+	int i;
+	struct resource *r;
+
+	for (i = 1; i <= PCI_ROM_RESOURCE; i++) {
+		r = &dev->resource[i];
+		if (!r->start && !r->end && !r->flags)
+			continue;
+
+		pci_info(dev, "Cisco Silicon One BAR %d %pR fixed up\n", i, r);
+		r->start = 0;
+		r->end = 0;
+		r->flags = 0;
+	}
+
+	dev->class = PCI_CLASS_MEMORY_OTHER << 8;
+	pci_info(dev, "Cisco Silicon One class adjusted\n");
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_SYNOPSYS, PCI_DEVICE_ID_LEABA_PACIFIC,
+				silicon_one_fixup);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CISCO, PCI_DEVICE_ID_LEABA_PACIFIC,
+				silicon_one_fixup);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CISCO, PCI_DEVICE_ID_LEABA_GIBRALTAR,
+				silicon_one_fixup);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CISCO, PCI_DEVICE_ID_LEABA_GRAPHENE,
+				silicon_one_fixup);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CISCO, PCI_DEVICE_ID_LEABA_PALLADIUM,
+				silicon_one_fixup);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CISCO, PCI_DEVICE_ID_LEABA_ARGON,
+				silicon_one_fixup);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_CISCO, PCI_DEVICE_ID_LEABA_KRYPTON,
+				silicon_one_fixup);
+
