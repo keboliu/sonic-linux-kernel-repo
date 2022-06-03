@@ -1,5 +1,5 @@
 [abi]
-abiname: 12
+abiname: 12-2
 ignore-changes:
  __cpuhp_*
  __udp_gso_segment
