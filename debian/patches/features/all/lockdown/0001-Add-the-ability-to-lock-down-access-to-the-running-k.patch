@@ -1,0 +1,164 @@
+From: David Howells <dhowells@redhat.com>
+Date: Wed, 8 Nov 2017 15:11:31 +0000
+Subject: [01/29] Add the ability to lock down access to the running kernel
+ image
+Origin: https://git.kernel.org/pub/scm/linux/kernel/git/dhowells/linux-fs.git/commit?id=6d350e2534bfaaaa3e523484b2ca44d22377e951
+
+Provide a single call to allow kernel code to determine whether the system
+should be locked down, thereby disallowing various accesses that might
+allow the running kernel image to be changed including the loading of
+modules that aren't validly signed with a key we recognise, fiddling with
+MSR registers and disallowing hibernation,
+
+Signed-off-by: David Howells <dhowells@redhat.com>
+Acked-by: James Morris <james.l.morris@oracle.com>
+---
+ include/linux/kernel.h   | 17 ++++++++++++++
+ include/linux/security.h |  8 +++++++
+ security/Kconfig         |  8 +++++++
+ security/Makefile        |  3 +++
+ security/lock_down.c     | 60 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 96 insertions(+)
+ create mode 100644 security/lock_down.c
+
+Index: linux/include/linux/kernel.h
+===================================================================
+--- linux.orig/include/linux/kernel.h
++++ linux/include/linux/kernel.h
+@@ -341,6 +341,23 @@ static inline void refcount_error_report
+ { }
+ #endif
+ 
++#ifdef CONFIG_LOCK_DOWN_KERNEL
++extern bool __kernel_is_locked_down(const char *what, bool first);
++#else
++static inline bool __kernel_is_locked_down(const char *what, bool first)
++{
++	return false;
++}
++#endif
++
++#define kernel_is_locked_down(what)					\
++	({								\
++		static bool message_given;				\
++		bool locked_down = __kernel_is_locked_down(what, !message_given); \
++		message_given = true;					\
++		locked_down;						\
++	})
++
+ /* Internal, do not use. */
+ int __must_check _kstrtoul(const char *s, unsigned int base, unsigned long *res);
+ int __must_check _kstrtol(const char *s, unsigned int base, long *res);
+Index: linux/include/linux/security.h
+===================================================================
+--- linux.orig/include/linux/security.h
++++ linux/include/linux/security.h
+@@ -1843,5 +1843,13 @@ static inline void free_secdata(void *se
+ { }
+ #endif /* CONFIG_SECURITY */
+ 
++#ifdef CONFIG_LOCK_DOWN_KERNEL
++extern void __init init_lockdown(void);
++#else
++static inline void __init init_lockdown(void)
++{
++}
++#endif
++
+ #endif /* ! __LINUX_SECURITY_H */
+ 
+Index: linux/security/Kconfig
+===================================================================
+--- linux.orig/security/Kconfig
++++ linux/security/Kconfig
+@@ -239,6 +239,14 @@ config STATIC_USERMODEHELPER_PATH
+ 	  If you wish for all usermode helper programs to be disabled,
+ 	  specify an empty string here (i.e. "").
+ 
++config LOCK_DOWN_KERNEL
++	bool "Allow the kernel to be 'locked down'"
++	help
++	  Allow the kernel to be locked down under certain circumstances, for
++	  instance if UEFI secure boot is enabled.  Locking down the kernel
++	  turns off various features that might otherwise allow access to the
++	  kernel image (eg. setting MSR registers).
++
+ source security/selinux/Kconfig
+ source security/smack/Kconfig
+ source security/tomoyo/Kconfig
+Index: linux/security/Makefile
+===================================================================
+--- linux.orig/security/Makefile
++++ linux/security/Makefile
+@@ -30,3 +30,6 @@ obj-$(CONFIG_CGROUP_DEVICE)		+= device_c
+ # Object integrity file lists
+ subdir-$(CONFIG_INTEGRITY)		+= integrity
+ obj-$(CONFIG_INTEGRITY)			+= integrity/
++
++# Allow the kernel to be locked down
++obj-$(CONFIG_LOCK_DOWN_KERNEL)		+= lock_down.o
+Index: linux/security/lock_down.c
+===================================================================
+--- /dev/null
++++ linux/security/lock_down.c
+@@ -0,0 +1,60 @@
++/* Lock down the kernel
++ *
++ * Copyright (C) 2016 Red Hat, Inc. All Rights Reserved.
++ * Written by David Howells (dhowells@redhat.com)
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public Licence
++ * as published by the Free Software Foundation; either version
++ * 2 of the Licence, or (at your option) any later version.
++ */
++
++#include <linux/security.h>
++#include <linux/export.h>
++
++static __ro_after_init bool kernel_locked_down;
++
++/*
++ * Put the kernel into lock-down mode.
++ */
++static void __init lock_kernel_down(const char *where)
++{
++	if (!kernel_locked_down) {
++		kernel_locked_down = true;
++		pr_notice("Kernel is locked down from %s; see man kernel_lockdown.7\n",
++			  where);
++	}
++}
++
++static int __init lockdown_param(char *ignored)
++{
++	lock_kernel_down("command line");
++	return 0;
++}
++
++early_param("lockdown", lockdown_param);
++
++/*
++ * Lock the kernel down from very early in the arch setup.  This must happen
++ * prior to things like ACPI being initialised.
++ */
++void __init init_lockdown(void)
++{
++#ifdef CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT
++	if (efi_enabled(EFI_SECURE_BOOT))
++		lock_kernel_down("EFI secure boot");
++#endif
++}
++
++/**
++ * kernel_is_locked_down - Find out if the kernel is locked down
++ * @what: Tag to use in notice generated if lockdown is in effect
++ */
++bool __kernel_is_locked_down(const char *what, bool first)
++{
++	if (what && first && kernel_locked_down)
++		pr_notice("Lockdown: %s is restricted; see man kernel_lockdown.7\n",
++			  what);
++	return kernel_locked_down;
++}
++EXPORT_SYMBOL(__kernel_is_locked_down);
