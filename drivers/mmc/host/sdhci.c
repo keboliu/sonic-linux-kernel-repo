@@ -40,6 +40,8 @@
 
 #define MAX_TUNING_LOOP 40
 
+static unsigned int append_quirks;
+static unsigned int append_quirks2;
 static unsigned int debug_quirks = 0;
 static unsigned int debug_quirks2;
 
@@ -3038,6 +3040,9 @@ void __sdhci_read_caps(struct sdhci_host *host, u16 *ver, u32 *caps, u32 *caps1)
 
 	host->read_caps = true;
 
+	host->quirks |= append_quirks;
+	host->quirks2 |= append_quirks2;
+
 	if (debug_quirks)
 		host->quirks = debug_quirks;
 
@@ -3737,6 +3742,8 @@ static void __exit sdhci_drv_exit(void)
 module_init(sdhci_drv_init);
 module_exit(sdhci_drv_exit);
 
+module_param(append_quirks, uint, 0444);
+module_param(append_quirks2, uint, 0444);
 module_param(debug_quirks, uint, 0444);
 module_param(debug_quirks2, uint, 0444);
 
