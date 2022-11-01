@@ -32,6 +32,14 @@
 #include "sdhci-pci.h"
 #include "sdhci-pci-o2micro.h"
 
+/*
+ * Set the drive strength for eMMC. The default is 50 ohms. If required,
+ * we could change strength to 33 ohms. Per JEDEC spec section 10.5.4.1:
+ * 0x0 - 50 Ohms, 0x1 - 33 Ohms, 0x2 - 66 Ohms, 0x3 - 100 Ohms
+ */
+int default_drive_strength;
+module_param(default_drive_strength, int, 0444);
+
 static int sdhci_pci_enable_dma(struct sdhci_host *host);
 static void sdhci_pci_set_bus_width(struct sdhci_host *host, int width);
 static void sdhci_pci_hw_reset(struct sdhci_host *host);
@@ -1547,7 +1555,7 @@ static int sdhci_pci_select_drive_strength(struct sdhci_host *host,
 	struct sdhci_pci_slot *slot = sdhci_priv(host);
 
 	if (!slot->select_drive_strength)
-		return 0;
+		return default_drive_strength;
 
 	return slot->select_drive_strength(host, card, max_dtr, host_drv,
 					   card_drv, drv_type);
@@ -2014,3 +2022,5 @@ module_pci_driver(sdhci_driver);
 MODULE_AUTHOR("Pierre Ossman <pierre@ossman.eu>");
 MODULE_DESCRIPTION("Secure Digital Host Controller Interface PCI driver");
 MODULE_LICENSE("GPL");
+
+MODULE_PARM_DESC(default_drive_strength, "Default eMMC drive strength");
