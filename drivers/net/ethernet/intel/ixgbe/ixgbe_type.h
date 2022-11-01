@@ -1401,6 +1401,7 @@ struct ixgbe_thermal_sensor_data {
 
 /* PHY Types */
 #define IXGBE_M88E1145_E_PHY_ID  0x01410CD0
+#define BCM54616S_E_PHY_ID       0x03625D10
 
 /* Special PHY Init Routine */
 #define IXGBE_PHY_INIT_OFFSET_NL 0x002B
@@ -3060,6 +3061,7 @@ enum ixgbe_phy_type {
 	ixgbe_phy_x550em_kr,
 	ixgbe_phy_x550em_kx4,
 	ixgbe_phy_x550em_ext_t,
+	ixgbe_phy_ext_1g_t,
 	ixgbe_phy_cu_unknown,
 	ixgbe_phy_qt,
 	ixgbe_phy_xaui,
