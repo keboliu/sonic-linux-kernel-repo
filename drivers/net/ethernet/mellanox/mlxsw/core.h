@@ -300,6 +300,8 @@ struct mlxsw_resources {
 
 struct mlxsw_resources *mlxsw_core_resources_get(struct mlxsw_core *mlxsw_core);
 
+#define MLXSW_BUS_F_TXRX	BIT(0)
+
 struct mlxsw_bus {
 	const char *kind;
 	int (*init)(void *bus_priv, struct mlxsw_core *mlxsw_core,
@@ -315,6 +317,7 @@ struct mlxsw_bus {
 			char *in_mbox, size_t in_mbox_size,
 			char *out_mbox, size_t out_mbox_size,
 			u8 *p_status);
+	u8 features;
 };
 
 struct mlxsw_bus_info {
@@ -346,6 +349,54 @@ static inline int mlxsw_hwmon_init(struct mlxsw_core *mlxsw_core,
 				   struct mlxsw_hwmon **p_hwmon)
 {
 	return 0;
+}
+
+#endif
+
+struct mlxsw_thermal;
+
+#ifdef CONFIG_MLXSW_CORE_THERMAL
+
+int mlxsw_thermal_init(struct mlxsw_core *mlxsw_core,
+		       const struct mlxsw_bus_info *mlxsw_bus_info,
+		       struct mlxsw_thermal **p_thermal);
+void mlxsw_thermal_fini(struct mlxsw_thermal *thermal);
+
+#else
+
+static inline int mlxsw_thermal_init(struct mlxsw_core *mlxsw_core,
+				     const struct mlxsw_bus_info *mlxsw_bus_info,
+				     struct mlxsw_thermal **p_thermal)
+{
+	return 0;
+}
+
+static inline void mlxsw_thermal_fini(struct mlxsw_thermal *thermal)
+{
+}
+
+#endif
+
+struct mlxsw_qsfp;
+
+#ifdef CONFIG_MLXSW_CORE_QSFP
+
+int mlxsw_qsfp_init(struct mlxsw_core *mlxsw_core,
+		    const struct mlxsw_bus_info *mlxsw_bus_info,
+		    struct mlxsw_qsfp **p_qsfp);
+void mlxsw_qsfp_fini(struct mlxsw_qsfp *qsfp);
+
+#else
+
+static inline int mlxsw_qsfp_init(struct mlxsw_core *mlxsw_core,
+				  const struct mlxsw_bus_info *mlxsw_bus_info,
+				  struct mlxsw_qsfp **p_qsfp)
+{
+	return 0;
+}
+
+static inline void mlxsw_qsfp_fini(struct mlxsw_qsfp *qsfp)
+{
 }
 
 #endif

@@ -50,6 +50,12 @@ struct mlxsw_reg_info {
 	u16 len; /* In u8 */
 };
 
+#define MLXSW_REG_DEFINE(_name, _id, _len)				\
+static const struct mlxsw_reg_info mlxsw_reg_##_name = {		\
+	.id = _id,							\
+	.len = _len,							\
+}
+
 #define MLXSW_REG(type) (&mlxsw_reg_##type)
 #define MLXSW_REG_LEN(type) MLXSW_REG(type)->len
 #define MLXSW_REG_ZERO(type, payload) memset(payload, 0, MLXSW_REG(type)->len)
@@ -4486,7 +4492,7 @@ enum mlxsw_reg_mfcr_pwm_frequency {
  */
 MLXSW_ITEM32(reg, mfcr, pwm_frequency, 0x00, 0, 6);
 
-#define MLXSW_MFCR_TACHOS_MAX 10
+#define MLXSW_MFCR_TACHOS_MAX 12
 
 /* reg_mfcr_tacho_active
  * Indicates which of the tachometer is active (bit per tachometer).
@@ -4584,6 +4590,54 @@ static inline void mlxsw_reg_mfsm_pack(char *payload, u8 tacho)
 	mlxsw_reg_mfsm_tacho_set(payload, tacho);
 }
 
+/* MFSL - Management Fan Speed Limit Register
+ * ------------------------------------------
+ * The Fan Speed Limit register is used to configure the fan speed
+ * event / interrupt notification mechanism. Fan speed threshold are
+ * defined for both under-speed and over-speed.
+ */
+#define MLXSW_REG_MFSL_ID 0x9004
+#define MLXSW_REG_MFSL_LEN 0x0C
+
+MLXSW_REG_DEFINE(mfsl, MLXSW_REG_MFSL_ID, MLXSW_REG_MFSL_LEN);
+
+/* reg_mfsl_tacho
+ * Fan tachometer index.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, mfsl, tacho, 0x00, 24, 4);
+
+/* reg_mfsl_tach_min
+ * Tachometer minimum value (minimum RPM).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mfsl, tach_min, 0x04, 0, 16);
+
+/* reg_mfsl_tach_max
+ * Tachometer maximum value (maximum RPM).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mfsl, tach_max, 0x08, 0, 16);
+
+static inline void mlxsw_reg_mfsl_pack(char *payload, u8 tacho,
+				       u16 tach_min, u16 tach_max)
+{
+	MLXSW_REG_ZERO(mfsl, payload);
+	mlxsw_reg_mfsl_tacho_set(payload, tacho);
+	mlxsw_reg_mfsl_tach_min_set(payload, tach_min);
+	mlxsw_reg_mfsl_tach_max_set(payload, tach_max);
+}
+
+static inline void mlxsw_reg_mfsl_unpack(char *payload, u8 tacho,
+					 u16 *p_tach_min, u16 *p_tach_max)
+{
+	if (p_tach_min)
+		*p_tach_min = mlxsw_reg_mfsl_tach_min_get(payload);
+
+	if (p_tach_max)
+		*p_tach_max = mlxsw_reg_mfsl_tach_max_get(payload);
+}
+
 /* MTCAP - Management Temperature Capabilities
  * -------------------------------------------
  * This register exposes the capabilities of the device and
@@ -4655,6 +4709,29 @@ MLXSW_ITEM32(reg, mtmp, mtr, 0x08, 30, 1);
  */
 MLXSW_ITEM32(reg, mtmp, max_temperature, 0x08, 0, 16);
 
+/* reg_mtmp_tee
+ * Temperature Event Enable.
+ * 0 - Do not generate event
+ * 1 - Generate event
+ * 2 - Generate single event
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mtmp, tee, 0x0C, 30, 2);
+
+#define MLXSW_REG_MTMP_THRESH_HI 0x348	/* 105 Celsius */
+
+/* reg_mtmp_temperature_threshold_hi
+ * High threshold for Temperature Warning Event. In 0.125 Celsius.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mtmp, temperature_threshold_hi, 0x0C, 0, 16);
+
+/* reg_mtmp_temperature_threshold_lo
+ * Low threshold for Temperature Warning Event. In 0.125 Celsius.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mtmp, temperature_threshold_lo, 0x10, 0, 16);
+
 #define MLXSW_REG_MTMP_SENSOR_NAME_SIZE 8
 
 /* reg_mtmp_sensor_name
@@ -4671,6 +4748,8 @@ static inline void mlxsw_reg_mtmp_pack(char *payload, u8 sensor_index,
 	mlxsw_reg_mtmp_sensor_index_set(payload, sensor_index);
 	mlxsw_reg_mtmp_mte_set(payload, max_temp_enable);
 	mlxsw_reg_mtmp_mtr_set(payload, max_temp_reset);
+	mlxsw_reg_mtmp_temperature_threshold_hi_set(payload,
+						    MLXSW_REG_MTMP_THRESH_HI);
 }
 
 static inline void mlxsw_reg_mtmp_unpack(char *payload, unsigned int *p_temp,
@@ -4689,6 +4768,81 @@ static inline void mlxsw_reg_mtmp_unpack(char *payload, unsigned int *p_temp,
 	}
 	if (sensor_name)
 		mlxsw_reg_mtmp_sensor_name_memcpy_from(payload, sensor_name);
+}
+
+/* MCIA - Management Cable Info Access
+ * -----------------------------------
+ * MCIA register is used to access the SFP+ and QSFP connector's EPROM.
+ */
+
+#define MLXSW_REG_MCIA_ID 0x9014
+#define MLXSW_REG_MCIA_LEN 0x40
+
+MLXSW_REG_DEFINE(mcia, MLXSW_REG_MCIA_ID, MLXSW_REG_MCIA_LEN);
+
+/* reg_mcia_l
+ * Lock bit. Setting this bit will lock the access to the specific
+ * cable. Used for updating a full page in a cable EPROM. Any access
+ * other then subsequence writes will fail while the port is locked.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mcia, l, 0x00, 31, 1);
+
+/* reg_mcia_module
+ * Module number.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, mcia, module, 0x00, 16, 8);
+
+/* reg_mcia_status
+ * Module status.
+ * Access: RO
+ */
+MLXSW_ITEM32(reg, mcia, status, 0x00, 0, 8);
+
+/* reg_mcia_i2c_device_address
+ * I2C device address.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mcia, i2c_device_address, 0x04, 24, 8);
+
+/* reg_mcia_page_number
+ * Page number.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mcia, page_number, 0x04, 16, 8);
+
+/* reg_mcia_device_address
+ * Device address.
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mcia, device_address, 0x04, 0, 16);
+
+/* reg_mcia_size
+ * Number of bytes to read/write (up to 48 bytes).
+ * Access: RW
+ */
+MLXSW_ITEM32(reg, mcia, size, 0x08, 0, 16);
+
+#define MLXSW_SP_REG_MCIA_EEPROM_SIZE 48
+
+/* reg_mcia_eeprom
+ * Bytes to read/write.
+ * Access: RW
+ */
+MLXSW_ITEM_BUF(reg, mcia, eeprom, 0x10, MLXSW_SP_REG_MCIA_EEPROM_SIZE);
+
+static inline void mlxsw_reg_mcia_pack(char *payload, u8 module, u8 lock,
+				       u8 page_number, u16 device_addr,
+				       u8 size, u8 i2c_device_addr)
+{
+	MLXSW_REG_ZERO(mcia, payload);
+	mlxsw_reg_mcia_module_set(payload, module);
+	mlxsw_reg_mcia_l_set(payload, lock);
+	mlxsw_reg_mcia_page_number_set(payload, page_number);
+	mlxsw_reg_mcia_device_address_set(payload, device_addr);
+	mlxsw_reg_mcia_size_set(payload, size);
+	mlxsw_reg_mcia_i2c_device_address_set(payload, i2c_device_addr);
 }
 
 /* MPAT - Monitoring Port Analyzer Table
@@ -4806,6 +4960,43 @@ static inline void mlxsw_reg_mpar_pack(char *payload, u8 local_port,
 	mlxsw_reg_mpar_enable_set(payload, enable);
 	mlxsw_reg_mpar_i_e_set(payload, i_e);
 	mlxsw_reg_mpar_pa_id_set(payload, pa_id);
+}
+
+/* MSCI - Management System CPLD Information Register
+ * ---------------------------------------------------
+ * This register allows querying for the System CPLD(s) information.
+ */
+#define MLXSW_REG_MSCI_ID 0x902A
+#define MLXSW_REG_MSCI_LEN 0x10
+
+static const struct mlxsw_reg_info mlxsw_reg_msci = {
+	.id = MLXSW_REG_MSCI_ID,
+	.len = MLXSW_REG_MSCI_LEN,
+};
+
+/* reg_msci_index
+ * Index to access.
+ * Access: Index
+ */
+MLXSW_ITEM32(reg, msci, index, 0x00, 0, 4);
+
+/* reg_msci_version
+ * CPLD version.
+ * Access: R0
+ */
+MLXSW_ITEM32(reg, msci, version, 0x04, 0, 32);
+
+static inline void
+mlxsw_reg_msci_pack(char *payload, u8 index)
+{
+	MLXSW_REG_ZERO(msci, payload);
+	mlxsw_reg_msci_index_set(payload, index);
+}
+
+static inline void
+mlxsw_reg_msci_unpack(char *payload, u16 *p_version)
+{
+	*p_version = mlxsw_reg_msci_version_get(payload);
 }
 
 /* MLCR - Management LED Control Register
