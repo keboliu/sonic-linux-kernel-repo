@@ -48,6 +48,10 @@ SUBSYS(perf_event)
 SUBSYS(net_prio)
 #endif
 
+#if IS_ENABLED(CONFIG_NET_L3_MASTER_DEV)
+SUBSYS(l3mdev)
+#endif
+ 
 #if IS_ENABLED(CONFIG_CGROUP_HUGETLB)
 SUBSYS(hugetlb)
 #endif
